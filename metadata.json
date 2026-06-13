@@ -1,0 +1,6 @@
+{
+  "name": "CampusPass",
+  "description": "Secure, peer-to-peer event ticketing application for university students with M-Pesa integration, real-time ticket confirmation, QR codes, and sales analytics dashboard.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
