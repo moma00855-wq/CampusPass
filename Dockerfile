@@ -1,35 +1,34 @@
 # --- Stage 1: Build Stage ---
-FROM eclipse-temurin:17-jdk-alpine AS builder
+# Use an image that has Gradle 8.5 and JDK 17 pre-installed to bypass needing 'gradlew'
+FROM gradle:8.5-jdk17-alpine AS builder
 WORKDIR /app
 
-# 1. Copy the Gradle wrapper and configuration files first to leverage Docker caching
-COPY gradlew .
-COPY gradle ./gradle
-COPY build.gradle* settings.gradle* ./
+# Switch to root to prevent permission issues on Render
+USER root
 
-# Grant execution rights on the Gradle wrapper and download dependencies
-RUN chmod +x gradlew && ./gradlew dependencies --no-daemon
+# Copy all configuration and source files at once since we are bypassing caching layers 
+# to ensure we capture folders like 'server', 'composeApp', 'backend', etc.
+COPY . .
 
-# 2. Copy your actual Kotlin source code
-COPY src ./src
-
-# 3. Build the production application fat JAR (skipping tests for faster deployment)
-RUN ./gradlew bootJar --no-daemon || ./gradlew shadowJar --no-daemon || ./gradlew build -x test --no-daemon
+# Run the build task. 
+# We use standard 'build' and skip tests to ensure it compiles whichever module contains your backend.
+RUN gradle build -x test --no-daemon
 
 # --- Stage 2: Production Stage ---
 FROM eclipse-temurin:17-jre-alpine
 WORKDIR /app
 
-# Create a non-root user for security
+# Create a secure non-root user for Render execution
 RUN addgroup -S campusgroup && adduser -S campususer -G campusgroup
 USER campususer
 
-# Copy the built JAR file from the builder stage
-# (Looks inside build/libs/ where Gradle outputs compiled JARs)
-COPY --from=builder /app/build/libs/*.jar app.jar
+# The Magic Step: Use a recursive wildcard (**) to find the jar file wherever 
+# Gradle compiled it (e.g., server/build/libs/ or build/libs/) and copy it over.
+COPY --from=builder /app/**/build/libs/*-all.jar ./app.jar || \
+    COPY --from=builder /app/**/build/libs/*.jar ./app.jar
 
-# Expose the internal port your CampusPass app runs on (adjust if you use 8080, 5000, etc.)
+# Expose the port your CampusPass application listens on
+# (Render automatically maps this; adjust if your app runs on 8080, 5000, 3000, etc.)
 EXPOSE 8080
 
-# Run the Kotlin application
 ENTRYPOINT ["java", "-jar", "app.jar"]
